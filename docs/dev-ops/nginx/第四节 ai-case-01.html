@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 流式对话</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<div class="max-w-3xl mx-auto py-8 px-4">
+    <div class="bg-white rounded-xl shadow-md p-6 flex flex-col h-[85vh]">
+        <h1 class="text-xl font-bold text-center mb-4 text-gray-800">AI 流式对话</h1>
+
+        <!-- 对话内容展示区 -->
+        <div id="chatBox" class="flex-1 overflow-y-auto mb-4 p-4 bg-gray-50 rounded-lg space-y-4"></div>
+
+        <!-- 输入框 + 发送按钮 -->
+        <div class="flex gap-2">
+            <input
+                    id="messageInput"
+                    type="text"
+                    placeholder="请输入问题..."
+                    class="flex-1 border border-gray-300 rounded-lg px-4 py-2 outline-none focus:ring-2 focus:ring-blue-400"
+            >
+            <button
+                    id="sendBtn"
+                    class="bg-blue-500 text-white px-5 py-2 rounded-lg hover:bg-blue-600 transition"
+            >
+                发送
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chatBox');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const model = "deepseek-r1:1.5b"; // 你的模型名称
+
+    // 绑定发送事件
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', e => e.key === 'Enter' && sendMessage());
+
+    async function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message) return;
+
+        // 追加用户消息
+        appendMessage('user', message);
+        messageInput.value = '';
+
+        // 追加AI占位
+        const aiMsgDiv = appendMessage('ai', '');
+        let fullText = '';
+
+        // 构建流式GET接口
+        const apiUrl = `http://localhost:8090/api/v1/ollama/generate_stream?model=${encodeURIComponent(model)}&message=${encodeURIComponent(message)}`;
+
+        // 创建EventSource流式监听
+        const eventSource = new EventSource(apiUrl);
+
+        eventSource.onmessage = function (event) {
+            try {
+                const data = JSON.parse(event.data);
+                const content = data?.result?.output?.content || '';
+                const finishReason = data?.result?.metadata?.finishReason;
+
+                if (content) {
+                    fullText += content;
+                    aiMsgDiv.innerHTML = fullText;
+                    aiMsgDiv.scrollIntoView({ behavior: 'smooth' });
+                }
+
+                // 结束标识
+                if (finishReason === 'STOP') {
+                    eventSource.close();
+                }
+            } catch (e) {}
+        };
+
+        eventSource.onerror = function () {
+            eventSource.close();
+        };
+    }
+
+    // 消息展示
+    function appendMessage(role, text) {
+        const div = document.createElement('div');
+        div.className = role === 'user'
+            ? 'text-right'
+            : 'text-left';
+
+        const msg = document.createElement('div');
+        msg.className = role === 'user'
+            ? 'inline-block bg-blue-500 text-white px-4 py-2 rounded-lg max-w-[80%]'
+            : 'inline-block bg-gray-200 text-gray-800 px-4 py-2 rounded-lg max-w-[80%] whitespace-pre-wrap';
+
+        msg.innerHTML = text;
+        div.appendChild(msg);
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return msg;
+    }
+</script>
+
+</body>
+</html>
